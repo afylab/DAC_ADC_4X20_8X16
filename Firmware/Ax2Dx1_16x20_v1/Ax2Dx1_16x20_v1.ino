@@ -3,6 +3,8 @@
 //Carlos Kometter
 //James Ehrets 
 //Liam A. Cohen
+//Toby Chu
+//Ruining Zhang
 
 //3/23/2018
 //Updated: 09/04/2019 by Liam A. Cohen for DAC + 2xDiff ADC box base line code
