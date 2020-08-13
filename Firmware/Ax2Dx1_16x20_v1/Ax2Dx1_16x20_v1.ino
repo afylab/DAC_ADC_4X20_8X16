@@ -1287,7 +1287,9 @@ void router(std::vector<String> DB)
 
     case 23:
       if (DB[2]>2097151 || DB[2]<0){
-        //Serial.println(""); An error message
+        Serial.print("VOLTAGE_OVERRANGE");
+        Serial.print(LB[DB[1].toInt()],6);
+        Serial.println(UB[DB[1].toInt()],6);
         break;
       }else{
         v = writeDACbits(DB[1].toInt(), DB[2].toInt());
