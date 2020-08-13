@@ -35,10 +35,10 @@ int err = 11;
 ///////////////////////////////////////////////////////////////
 
 //Define commands recognized via serial input
-const int Noperations = 23;
+const int Noperations = 24;
 String operations[Noperations] = {"NOP", "INITIALIZE", "SET", "GET_DAC", "GET_ADC", "RAMP1", "RAMP2", "BUFFER_RAMP", "BUFFER_RAMP_DIS", 
 "RESET", "TALK", "CONVERT_TIME", "*IDN?", "*RDY?", "GET_DUNIT", "SET_DUNIT", "ADC_ZERO_SC_CAL", "ADC_CH_ZERO_SC_CAL", 
-"ADC_CH_FULL_SC_CAL", "DAC_CH_CAL", "FULL_SCALE" , "INQUIRYOSG" , "MESSOSG"};
+"ADC_CH_FULL_SC_CAL", "DAC_CH_CAL", "FULL_SCALE" , "INQUIRYOSG" , "MESSOSG", "SET_BITS"};
 
 //initial variables
 int initialized = 0; //address of where initialized variable is stored
@@ -1068,6 +1068,54 @@ void dac_ch_cal()
   }
 }
 
+float writeDACbits(int dacChannel, int bits)
+{
+  //check if bitRead(bits[0], 4) == 1 and everything before it 0
+  switch (dacChannel)
+  {
+    case 0:
+      return dacBitsSend(dac[0], bits);
+      break;
+
+    case 1:
+      return dacBitsSend(dac[1], bits);
+      break;
+
+    case 2:
+      return dacBitsSend(dac[2], bits);
+      break;
+
+    case 3:
+      return dacBitsSend(dac[3], bits);
+      break;
+
+    default:
+      break;
+  }
+}
+
+float dacBitsSend(int channelDAC, int bits)
+{
+  byte b1;
+  byte b2;
+  byte b3;
+  intToThreeBytes(bits, &b1, &b2, &b3);
+  
+  SPI.beginTransaction(dacSettings);
+  digitalWrite(channelDAC, LOW);
+  SPI.transfer(b1); // send command byte to DAC
+  SPI.transfer(b2); // MS data bits, DAC2
+  SPI.transfer(b3); //LS 8 data bits, DAC2
+  digitalWrite(channelDAC, HIGH);
+  SPI.endTransaction();
+
+  digitalWrite(ldac, LOW);
+
+  digitalWrite(ldac, HIGH);
+
+  return threeByteToVoltage(b1, b2, b3);
+}
+
 void changeosg()
 {
   OS[0] = 1;
@@ -1236,6 +1284,21 @@ void router(std::vector<String> DB)
       Serial.println(GE[2]);
       Serial.println(GE[3]);
       break;
+
+    case 23:
+      if (DB[2]>2097151 || DB[2]<0){
+        //Serial.println(""); An error message
+        break;
+      }else{
+        v = writeDACbits(DB[1].toInt(), DB[2].toInt());
+        Serial.print("DAC ");
+        Serial.print(DB[1]);
+        Serial.print(" UPDATED TO ");
+        Serial.print(v, 6);
+        Serial.println("V"); 
+        break;
+      }
+      
       
     default:
       break;
