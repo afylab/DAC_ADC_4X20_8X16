@@ -7,10 +7,12 @@
 //3/23/2018
 //Updated: 09/04/2019 by Liam A. Cohen for DAC + 2xDiff ADC box base line code
 //Updated: 08/09/2020 by Liam A. Cohen -- updated SPI initialization
+//Updated: 08/10/2020 by Ruining Zhang -- included pid controller
 
 #include "SPI.h" // necessary library for SPI communication
 #include <vector>
 #include <math.h>
+#include <numeric>
 #include <DueFlashStorage.h>
 DueFlashStorage dueFlashStorage;
 
@@ -33,10 +35,10 @@ int err = 11;
 ///////////////////////////////////////////////////////////////
 
 //Define commands recognized via serial input
-const int Noperations = 23;
+const int Noperations = 24;
 String operations[Noperations] = {"NOP", "INITIALIZE", "SET", "GET_DAC", "GET_ADC", "RAMP1", "RAMP2", "BUFFER_RAMP", "BUFFER_RAMP_DIS", 
 "RESET", "TALK", "CONVERT_TIME", "*IDN?", "*RDY?", "GET_DUNIT", "SET_DUNIT", "ADC_ZERO_SC_CAL", "ADC_CH_ZERO_SC_CAL", 
-"ADC_CH_FULL_SC_CAL", "DAC_CH_CAL", "FULL_SCALE" , "INQUIRYOSG" , "MESSOSG"};
+"ADC_CH_FULL_SC_CAL", "DAC_CH_CAL", "FULL_SCALE" , "INQUIRYOSG" , "MESSOSG", "FEEDBACK"};
 
 //initial variables
 int initialized = 0; //address of where initialized variable is stored
@@ -1084,6 +1086,166 @@ void debug()
   delay(3000);
 }
 
+///////////////////////////////////////////////////////////////
+//  PID algorithm, adapted from "pid.py" by Fangyuan         //
+///////////////////////////////////////////////////////////////
+
+class pid 
+{
+  // private attributes
+    
+  float kp;
+  float ki;
+  float vmin;
+  float vmax;
+    
+  public:
+  // public attributes
+    
+  float err;
+  float err_sum;
+  float sp;
+  float fbVoltage;
+  float prevVoltage;
+    
+  // initialization
+    
+  pid(float new_kp, float new_ki, float new_vmin, float new_vmax, float setpoint);
+    
+  // public functions
+    
+  void add(float reading);
+  float feedback(float reading);
+  void reset();
+};
+
+pid::pid(float new_kp, float new_ki, float new_vmin, float new_vmax, float setpoint=0.0) 
+{
+  err = 0.0;
+  err_sum = 0.0;
+  kp = new_kp;
+  ki = new_ki;
+  vmin = new_vmin;
+  vmax = new_vmax;
+  sp = setpoint;
+  fbVoltage = 0.0;
+  prevVoltage = 0.0;
+}
+
+void pid::add(float reading)
+{
+  err = sp - reading;
+  err_sum += err;
+}
+
+float pid::feedback(float reading)
+{
+  add(reading);
+  fbVoltage = kp*err+ki*err_sum;
+  if (fbVoltage > vmax)
+  {
+      fbVoltage = vmax;
+  } 
+  if (fbVoltage < vmin)
+  {
+      fbVoltage = vmin;
+  }
+  return fbVoltage;
+}
+
+void pid::reset() 
+{
+    err = 0.0;
+    err_sum = 0.0;
+}
+
+///////////////////////////////////////////////////////////////
+//  Feedback loop function                                   //
+///////////////////////////////////////////////////////////////
+
+void feedback(float Kp, float Ki, float Vmin, float Vmax, float Setpoint, float Offset, int Max_iterations, float Err_threshold, byte sig_ADCchannel,  byte x1_ADCchannel, byte y1_ADCchannel, byte x3_ADCchannel, int fb_DACchannel, float Dwell, int Window, int Settle_window)
+{
+  std::vector<float> list_sig; // data list
+  
+  int n = 0; // number of iterations
+    
+  pid fbpid(Kp, Ki, Vmin, Vmax, Setpoint); // pid algorithm instance
+  
+  float avg_sig;//declare variables to be used in loop
+  float avg_x1;
+  float avg_x3;
+  float avg_y1;
+  float fb; 
+  
+  float t0 = micros(); //startin time
+  while (n < Max_iterations)
+  {
+      n += 1;
+      
+      // PID 
+      std::vector<float> sig; // data lists for taking settle_window average
+      std::vector<float> x1;
+      std::vector<float> y1;
+      std::vector<float> x3;
+      for (int i = 0; i < Settle_window; i++)
+      {
+          sig.push_back(readADC(sig_ADCchannel));
+          x1.push_back(readADC(x1_ADCchannel));
+          y1.push_back(readADC(y1_ADCchannel));
+          x3.push_back(readADC(x3_ADCchannel));
+      }
+      
+      // take Settle_window average
+      avg_sig = std::accumulate(sig.begin(), sig.end(), 0.0f)/Settle_window;
+      avg_x1 = std::accumulate(x1.begin(), x1.end(), 0.0f)/Settle_window;
+      avg_x3 = std::accumulate(x3.begin(), x3.end(), 0.0f)/Settle_window;
+      avg_y1 = std::accumulate(y1.begin(), y1.end(), 0.0f)/Settle_window;
+      
+      fb = fbpid.feedback(avg_sig) + Offset; // Offset OR VFB0
+      writeDAC(fb_DACchannel, fb); 
+      
+      list_sig.push_back(avg_sig); // record in list
+      
+      //take average of the last window-length data
+      float window_sig = std::accumulate(list_sig.end()-Window, list_sig.end(), 0.0f)/Window;
+      
+      // End feedback loop if error threshold is met
+      if (abs(window_sig - Setpoint) < Err_threshold & list_sig.size() > Window)
+      {
+          break;
+      }
+      
+      delayMicroseconds(Dwell); // sleep for (dwell) microseconds before starting the next iteration
+  }
+  
+  float t1 = micros() - t0; // time interval
+
+  // output
+  Serial.print(n);
+  Serial.print(",");
+  Serial.print(avg_x1,4);
+  Serial.print(",");
+  Serial.print(avg_y1,4);
+  Serial.print(",");
+  Serial.print(avg_x3,4);
+  Serial.print(",");
+  Serial.print(avg_sig,4);
+  Serial.print(",");
+  Serial.println(fb,4);
+  
+  Serial.print("Feedback finished in ");
+  Serial.print(t1);
+  Serial.print(" microseconds and ");
+  Serial.print(n);
+  Serial.print(" interations. Error from the setpoint ");
+  Serial.print(Setpoint,4);
+  Serial.print(" is within the threshold ");
+  Serial.print(Err_threshold,4);
+  Serial.print(". The final feedback voltage is ");
+  Serial.print(fb,4);
+  Serial.println(".");
+}
+
 void router(std::vector<String> DB)
 {
   float v;
@@ -1234,9 +1396,31 @@ void router(std::vector<String> DB)
       Serial.println(GE[2]);
       Serial.println(GE[3]);
       break;
+    
+    case 23: //FEEDBACK
+      float Kp = DB[1].toFloat();
+      float Ki = DB[2].toFloat();
+      float Vmin = DB[3].toFloat();
+      float Vmax = DB[4].toFloat();
+      float Setpoint = DB[5].toFloat();
+      float Offset = DB[6].toFloat();
+      int Max_iterations = DB[7].toInt();
+      float Err_threshold = DB[8].toFloat();
+      byte sig_ADCchannel = DB[9].toInt();
+      byte x1_ADCchannel = DB[10].toInt();
+      byte y1_ADCchannel = DB[11].toInt();
+      byte x3_ADCchannel = DB[12].toInt();
+      int fb_DACchannel = DB[13].toInt();
+      float Dwell = DB[14].toFloat();
+      int Window = DB[15].toInt();
+      int S_window = DB[16].toInt();
       
-    default:
+      feedback(Kp,Ki,Vmin,Vmax,Setpoint,Offset,Max_iterations,Err_threshold,sig_ADCchannel,x1_ADCchannel,y1_ADCchannel,x3_ADCchannel,fb_DACchannel,Dwell,Window,S_window);
+      
       break;
+      
+    //default:
+      //break;
   }
 }
 
