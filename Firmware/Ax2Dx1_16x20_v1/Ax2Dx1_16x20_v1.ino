@@ -40,6 +40,24 @@ String operations[Noperations] = {"NOP", "INITIALIZE", "SET", "GET_DAC", "GET_AD
 "RESET", "TALK", "CONVERT_TIME", "*IDN?", "*RDY?", "GET_DUNIT", "SET_DUNIT", "ADC_ZERO_SC_CAL", "ADC_CH_ZERO_SC_CAL", 
 "ADC_CH_FULL_SC_CAL", "DAC_CH_CAL", "FULL_SCALE" , "INQUIRYOSG" , "MESSOSG", "SET_BITS"};
 
+//Array of voltages for AC generation
+std::vector<float> get_bitsInputTable()
+{
+  std::vector<float> phase[3294199];       //3294199 = 2pi/2^19
+  std::vector<int> bitsInput[3294199];
+  for (int i=0; i<3294199; i++)
+  {
+    phase[i] = 2*M_PI*i/3294199;
+  }
+  for (int i=0; i<3294199; i++)
+  {
+    bitsInput[i] = pow(2,19)*sin(phase[i]);
+  }
+  return bitsInput;
+}
+const PROGMEM float bitsInput[] = get_bitsInputTable();
+
+
 //initial variables
 int initialized = 0; //address of where initialized variable is stored
 int delayUnit = 0; // 0=microseconds 1=miliseconds
