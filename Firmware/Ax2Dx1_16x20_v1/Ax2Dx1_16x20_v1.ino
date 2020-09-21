@@ -35,14 +35,17 @@ int err = 11;
 ///////////////////////////////////////////////////////////////
 
 //Define commands recognized via serial input
-const int Noperations = 24;
+const int Noperations = 25;
 String operations[Noperations] = {"NOP", "INITIALIZE", "SET", "GET_DAC", "GET_ADC", "RAMP1", "RAMP2", "BUFFER_RAMP", "BUFFER_RAMP_DIS", 
 "RESET", "TALK", "CONVERT_TIME", "*IDN?", "*RDY?", "GET_DUNIT", "SET_DUNIT", "ADC_ZERO_SC_CAL", "ADC_CH_ZERO_SC_CAL", 
-"ADC_CH_FULL_SC_CAL", "DAC_CH_CAL", "FULL_SCALE" , "INQUIRYOSG" , "MESSOSG", "SET_BITS"};
+"ADC_CH_FULL_SC_CAL", "DAC_CH_CAL", "FULL_SCALE" , "INQUIRYOSG" , "MESSOSG", "SET_BITS", "SINE_WAVE"};
 
-//Array of voltages for AC generation
-std::vector<float> get_bitsInputTable()
+//Store array of bits for AC generation into flash storage
+void store_bitsInputTable()
 {
+  byte b1;
+  byte b2;
+  byte b3;
   std::vector<float> phase[3294199];       //3294199 = 2pi/2^19
   std::vector<int> bitsInput[3294199];
   for (int i=0; i<3294199; i++)
@@ -51,12 +54,13 @@ std::vector<float> get_bitsInputTable()
   }
   for (int i=0; i<3294199; i++)
   {
-    bitsInput[i] = pow(2,19)*sin(phase[i]);
+    //bitsInput[i] = pow(2,19)*sin(phase[i]);
+    intToThreeBytes(pow(2,19)*sin(phase[i]), &b1, &b2, &b3);
+    dueFlashStorage.write(3*i+1, b1);
+    dueFlashStorage.write(3*i+2, b2);
+    dueFlashStorage.write(3*i+3, b3);  //uses address up to 9882597
   }
-  return bitsInput;
 }
-const PROGMEM float bitsInput[] = get_bitsInputTable();
-
 
 //initial variables
 int initialized = 0; //address of where initialized variable is stored
@@ -142,6 +146,7 @@ void setup()
   digitalWrite(reset[0], HIGH);  digitalWrite(data, LOW); digitalWrite(reset[0], LOW);  digitalWrite(data, HIGH); delay(5);  digitalWrite(reset[0], HIGH);  digitalWrite(data, LOW); //Resets ADC1 on startup.
   digitalWrite(reset[1], HIGH);  digitalWrite(data, LOW); digitalWrite(reset[1], LOW);  digitalWrite(data, HIGH); delay(5);  digitalWrite(reset[1], HIGH);  digitalWrite(data, LOW); //Resets ADC2 on startup.
   
+  store_bitsInputTable();
 }
 
 void blinker(int s) {
