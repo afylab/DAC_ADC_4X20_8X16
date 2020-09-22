@@ -70,11 +70,6 @@ int adc_select = 0;
 
 float DAC_FULL_SCALE = 10.0;
 
-std::vector<int> sineWave_inputs1;
-std::vector<int> sineWave_inputs2;
-std::vector<int> sineWave_inputs3;
-std::vector<int> sineWave_inputs4;
- 
 // Calibration constants
 float OS[4] = {0.00, 0.00, 0.00, 0.00}; // offset error
 float GE[4] = {0.9993023, 0.9993023, 0.9993023, 0.9993023}; // gain error
@@ -84,6 +79,14 @@ float LB[4] = {-10.0 * GE[0] + OS[0], -10.0 * GE[1] + OS[1], -10.0 * GE[2] + OS[
 //define SPI settings for DACs and ADCs
 SPISettings dacSettings(35000000, MSBFIRST, SPI_MODE1);
 SPISettings adcSettings(12000000, MSBFIRST, SPI_MODE3);
+
+//Global variables for sine wave generation
+std::vector<int> sineWave_inputs1;
+std::vector<int> sineWave_inputs2;
+std::vector<int> sineWave_inputs3;
+std::vector<int> sineWave_inputs4;
+int sineWave_updates[4];
+int sineWave_step[4] = [0,0,0,0];
 
 std::vector<String> query_serial()
 {
@@ -1146,7 +1149,7 @@ float dacBitsSend(int channelDAC, int bits)
   return threeByteToVoltage(b1, b2, b3);
 }
 
-void sineWave(int dacChannel, float offset, float amplitude, float frequency, float phase, float updates)
+void sineWave(int dacChannel, float offset, float amplitude, float frequency, float phase, int updates)
 {
   byte temp = dueFlashStorage.read(sineWave_status);
   temp = temp|pow(2, dacChannel-1);
@@ -1155,36 +1158,42 @@ void sineWave(int dacChannel, float offset, float amplitude, float frequency, fl
   {
     case 1:
       sineWave_inputs1 = readTable(phase, updates);
+      sineWave_updates1 = updates;
       for (int i=0; i<updates; i++)
       {
-        sineWave_inputs1[i] = round(sineWave_inputs1[i]*abs(amplitude)/UB[0] + (offset - OS[0])/GE[0]);
+        sineWave_inputs1[i] = round(sineWave_inputs1[i]*2*abs(amplitude)/(UB[0]-LB[0]) + (offset - OS[0])/GE[0]);
       }
       break;
     case 2:
       sineWave_inputs2 = readTable(phase, updates);
+      sineWave_updates2 = updates;
       for (int i=0; i<updates; i++)
       {
-        sineWave_inputs2[i] = round(sineWave_inputs2[i]*abs(amplitude)/UB[1] + (offset - OS[1])/GE[1]);
+        sineWave_inputs2[i] = round(sineWave_inputs2[i]*2*abs(amplitude)/(UB[1]-LB[1]) + (offset - OS[1])/GE[1]);
       }
       break;
     case 3:
       sineWave_inputs3 = readTable(phase, updates);
+      sineWave_updates3 = updates;
       for (int i=0; i<updates; i++)
       {
-        sineWave_inputs3[i] = round(sineWave_inputs3[i]*abs(amplitude)/UB[2] + (offset - OS[2])/GE[2]);
+        sineWave_inputs3[i] = round(sineWave_inputs3[i]*2*abs(amplitude)/(UB[2]-LB[2]) + (offset - OS[2])/GE[2]);
       }
       break;
     case 4:
       sineWave_inputs4 = readTable(phase, updates);
+      sineWave_updates4 = updates;
       for (int i=0; i<updates; i++)
       {
-        sineWave_inputs4[i] = round(sineWave_inputs4[i]*abs(amplitude)/UB[3] + (offset - OS[3])/GE[3]);
+        sineWave_inputs4[i] = round(sineWave_inputs4[i]*2*abs(amplitude)/(UB[3]-LB[3]) + (offset - OS[3])/GE[3]);
       }
       break;
+      
     default:
       break;
   }
   //frequency not taken care of
+  //interrupt with updateSineWavex at frequency
 }
 
 std::vector<int> readTable(float phase, int updates)
@@ -1209,6 +1218,35 @@ std::vector<int> readTable(float phase, int updates)
     readValues[i] = threeByteToInt(b1,b2,b3);
   }
   return readValues;
+}
+
+void updateSineWave1()
+{
+  dacBitsSend(dac[0], sineWave_inputs1[sineWave_step[0]]);
+  sineWave_step[0] += 1;
+  if (sineWave_step[0] >= sineWave_updates[0])
+    sineWave_step[0] = 0;
+}
+void updateSineWave2()
+{
+  dacBitsSend(dac[1], sineWave_inputs2[sineWave_step[1]]);
+  sineWave_step[1] += 1;
+  if (sineWave_step[1] >= sineWave_updates[1])
+    sineWave_step[1] = 0;
+}
+void updateSineWave3()
+{
+  dacBitsSend(dac[2], sineWave_inputs3[sineWave_step[2]]);
+  sineWave_step[2] += 1;
+  if (sineWave_step[2] >= sineWave_updates[2])
+    sineWave_step[2] = 0;
+}
+void updateSineWave4()
+{
+  dacBitsSend(dac[3], sineWave_inputs4[sineWave_step[3]]);
+  sineWave_step[3] += 1;
+  if (sineWave_step[3] >= sineWave_updates[3])
+    sineWave_step[3] = 0;
 }
 
 void changeosg()
@@ -1396,7 +1434,7 @@ void router(std::vector<String> DB)
         break;
       }
 
-    case 24:    //SINE_WAVE, port, offset, amp, ang freq, phase, update rate
+    case 24:    //SINE_WAVE, port, offset, amp, freq, phase, updates per cycle
       if (){    //check voltage
         break;
       }else{
