@@ -1475,6 +1475,8 @@ void router(std::vector<String> DB)
         break;
       }else{
         sineWave(DB);
+        Serial.print("STARTED OUTPUTTING SINE WAVE FROM DAC");
+        Serial.println(DB[1]);
         break;
       }
 
@@ -1487,7 +1489,7 @@ void router(std::vector<String> DB)
       Timer1.start();
       Timer2.start();
       Timer3.start();
-      Serial.println("SYNC_FINISHED");
+      Serial.println("SINE WAVES SYNCED");
       break;
       
     default:
