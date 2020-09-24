@@ -65,6 +65,7 @@ void store_bitsInputTable()
 
 //initial variables
 int initialized = 0; //address of where initialized variable is stored
+byte sineWave_status = 9882598; //address of where sineWave_status variable is stored
 int delayUnit = 0; // 0=microseconds 1=miliseconds
 int adc_select = 0;
 
@@ -156,6 +157,7 @@ void setup()
   digitalWrite(reset[1], HIGH);  digitalWrite(data, LOW); digitalWrite(reset[1], LOW);  digitalWrite(data, HIGH); delay(5);  digitalWrite(reset[1], HIGH);  digitalWrite(data, LOW); //Resets ADC2 on startup.
   
   store_bitsInputTable();
+  dueFlashStorage.write(sineWave_status, 0);
   Timer0.attachInterrupt(updateSineWave0);
   Timer1.attachInterrupt(updateSineWave1);
   Timer2.attachInterrupt(updateSineWave2);
@@ -1160,6 +1162,8 @@ void sineWave(String DB[7])
   float frequency = float(DB[4]);
   float phase = float(DB[5]);
   int updates = DB[6].toInt();
+  byte temp = dueFlashStorage.read(sineWave_status);
+  dueFlashStorage.write(sineWave_status, temp|2^DB[1].toInt());
   switch (dacChannel)
   {
     case 0:
