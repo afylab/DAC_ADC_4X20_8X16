@@ -65,7 +65,6 @@ void store_bitsInputTable()
 
 //initial variables
 int initialized = 0; //address of where initialized variable is stored
-byte sineWave_status = 0; //address of where sineWave_status variable is stored
 int delayUnit = 0; // 0=microseconds 1=miliseconds
 int adc_select = 0;
 
@@ -82,11 +81,11 @@ SPISettings dacSettings(35000000, MSBFIRST, SPI_MODE1);
 SPISettings adcSettings(12000000, MSBFIRST, SPI_MODE3);
 
 //Global variables for sine wave generation
+std::vector<int> sineWave_inputs0;
 std::vector<int> sineWave_inputs1;
 std::vector<int> sineWave_inputs2;
 std::vector<int> sineWave_inputs3;
-std::vector<int> sineWave_inputs4;
-int sineWave_updates[4];
+int sineWave_updates[4] = [0,0,0,0];
 int sineWave_step[4] = [0,0,0,0];
 
 std::vector<String> query_serial()
@@ -157,7 +156,10 @@ void setup()
   digitalWrite(reset[1], HIGH);  digitalWrite(data, LOW); digitalWrite(reset[1], LOW);  digitalWrite(data, HIGH); delay(5);  digitalWrite(reset[1], HIGH);  digitalWrite(data, LOW); //Resets ADC2 on startup.
   
   store_bitsInputTable();
-  dueFlashStorage.write(sineWave_status, 0);
+  Timer0.attachInterrupt(updateSineWave0);
+  Timer1.attachInterrupt(updateSineWave1);
+  Timer2.attachInterrupt(updateSineWave2);
+  Timer3.attachInterrupt(updateSineWave3);
 }
 
 void blinker(int s) {
@@ -1150,48 +1152,51 @@ float dacBitsSend(int channelDAC, int bits)
   return threeByteToVoltage(b1, b2, b3);
 }
 
-void sineWave(int dacChannel, float offset, float amplitude, float frequency, float phase, int updates)
+void sineWave(String DB[7])
 {
-  byte temp = dueFlashStorage.read(sineWave_status);
-  temp = temp|pow(2, dacChannel-1);
-  dueFlashStorage.write(sineWave_status, temp);
+  int dacChannel = DB[1].toInt();
+  float offset = float(DB[2]);
+  float amplitude = float(DB[3]);
+  float frequency = float(DB[4]);
+  float phase = float(DB[5]);
+  int updates = DB[6].toInt();
   switch (dacChannel)
   {
-    case 1:
-      sineWave_inputs1 = readTable(phase, updates);
-      sineWave_updates1 = updates;
+    case 0:
+      sineWave_inputs0 = readTable(phase, updates);
+      sineWave_updates[0] = updates;
       for (int i=0; i<updates; i++)
       {
-        sineWave_inputs1[i] = round(sineWave_inputs1[i]*2*abs(amplitude)/(UB[0]-LB[0]) + (offset - OS[0])/GE[0]);
+        sineWave_inputs0[i] = round(sineWave_inputs0[i]*2*abs(amplitude)/(UB[0]-LB[0]) + (offset - OS[0])/GE[0]);
       }
-      Timer0.attachInterrupt(updateSineWave1).setFrequency(frequency/updates)
+      Timer0.setFrequency(frequency/updates).start();
+      break;
+    case 1:
+      sineWave_inputs1 = readTable(phase, updates);
+      sineWave_updates[1] = updates;
+      for (int i=0; i<updates; i++)
+      {
+        sineWave_inputs1[i] = round(sineWave_inputs1[i]*2*abs(amplitude)/(UB[1]-LB[1]) + (offset - OS[1])/GE[1]);
+      }
+      Timer1.setFrequency(frequency/updates).start();
       break;
     case 2:
       sineWave_inputs2 = readTable(phase, updates);
-      sineWave_updates2 = updates;
+      sineWave_updates[2] = updates;
       for (int i=0; i<updates; i++)
       {
-        sineWave_inputs2[i] = round(sineWave_inputs2[i]*2*abs(amplitude)/(UB[1]-LB[1]) + (offset - OS[1])/GE[1]);
+        sineWave_inputs2[i] = round(sineWave_inputs2[i]*2*abs(amplitude)/(UB[2]-LB[2]) + (offset - OS[2])/GE[2]);
       }
-      Timer1.attachInterrupt(updateSineWave2).setFrequency(frequency/updates)
+      Timer2.setFrequency(frequency/updates).start();
       break;
     case 3:
       sineWave_inputs3 = readTable(phase, updates);
-      sineWave_updates3 = updates;
+      sineWave_updates[3] = updates;
       for (int i=0; i<updates; i++)
       {
-        sineWave_inputs3[i] = round(sineWave_inputs3[i]*2*abs(amplitude)/(UB[2]-LB[2]) + (offset - OS[2])/GE[2]);
+        sineWave_inputs3[i] = round(sineWave_inputs3[i]*2*abs(amplitude)/(UB[3]-LB[3]) + (offset - OS[3])/GE[3]);
       }
-      Timer2.attachInterrupt(updateSineWave3).setFrequency(frequency/updates)
-      break;
-    case 4:
-      sineWave_inputs4 = readTable(phase, updates);
-      sineWave_updates4 = updates;
-      for (int i=0; i<updates; i++)
-      {
-        sineWave_inputs4[i] = round(sineWave_inputs4[i]*2*abs(amplitude)/(UB[3]-LB[3]) + (offset - OS[3])/GE[3]);
-      }
-      Timer3.attachInterrupt(updateSineWave4).setFrequency(frequency/updates)
+      Timer3.setFrequency(frequency/updates).start();
       break;
       
     default:
@@ -1210,11 +1215,11 @@ std::vector<int> readTable(float phase, int updates)
   for (int i=0; i<updates; i++)
   {                               //read the i*3294199/updates + phase th value
     index = i*3294199/update + phase;
-    while (index > 3294199){
-      index -= 3294199;
+    while (index > 3294198){
+      index -= 3294198;
     }
     while (index < 0){
-      index += 3294199;
+      index += 3294198;
     }
     b1 = dueFlashStorage.read(index-2);
     b2 = dueFlashStorage.read(index-1);
@@ -1224,33 +1229,55 @@ std::vector<int> readTable(float phase, int updates)
   return readValues;
 }
 
-void updateSineWave1()
+void updateSineWave0()
 {
-  dacBitsSend(dac[0], sineWave_inputs1[sineWave_step[0]]);
+  dacBitsSend(dac[0], sineWave_inputs0[sineWave_step[0]]);
   sineWave_step[0] += 1;
   if (sineWave_step[0] >= sineWave_updates[0])
     sineWave_step[0] = 0;
 }
-void updateSineWave2()
+void updateSineWave1()
 {
-  dacBitsSend(dac[1], sineWave_inputs2[sineWave_step[1]]);
+  dacBitsSend(dac[1], sineWave_inputs1[sineWave_step[1]]);
   sineWave_step[1] += 1;
   if (sineWave_step[1] >= sineWave_updates[1])
     sineWave_step[1] = 0;
 }
-void updateSineWave3()
+void updateSineWave2()
 {
-  dacBitsSend(dac[2], sineWave_inputs3[sineWave_step[2]]);
+  dacBitsSend(dac[2], sineWave_inputs2[sineWave_step[2]]);
   sineWave_step[2] += 1;
   if (sineWave_step[2] >= sineWave_updates[2])
     sineWave_step[2] = 0;
 }
-void updateSineWave4()
+void updateSineWave3()
 {
-  dacBitsSend(dac[3], sineWave_inputs4[sineWave_step[3]]);
+  dacBitsSend(dac[3], sineWave_inputs3[sineWave_step[3]]);
   sineWave_step[3] += 1;
   if (sineWave_step[3] >= sineWave_updates[3])
     sineWave_step[3] = 0;
+}
+
+void stopSineWave(int dacChannel)
+{
+  switch(dacChannel)
+  {
+    case 0:
+      Timer0.stop();
+      break;
+    case 1:
+      Timer1.stop();
+      break;
+    case 2:
+      Timer2.stop();
+      break;
+    case 3:
+      Timer3.stop();
+      break;
+
+    default:
+      break;
+  }
 }
 
 void changeosg()
@@ -1297,6 +1324,7 @@ void router(std::vector<String> DB)
         Serial.println(UB[DB[1].toInt()],6);
         break;
       }else{
+        stopSineWave(DB[1].toInt());
         v = writeDAC(DB[1].toInt(), DB[2].toFloat());
         Serial.print("DAC ");
         Serial.print(DB[1]);
@@ -1429,6 +1457,7 @@ void router(std::vector<String> DB)
         Serial.println(UB[DB[1].toInt()],6);
         break;
       }else{
+        stopSineWave(DB[1].toInt());
         v = writeDACbits(DB[1].toInt(), DB[2].toInt());
         Serial.print("DAC ");
         Serial.print(DB[1]);
@@ -1439,10 +1468,13 @@ void router(std::vector<String> DB)
       }
 
     case 24:    //SINE_WAVE, port, offset, amp, freq, phase, updates per cycle
-      if (){    //check voltage
+      if (DB[2]+DB[3]>UB[DB[1].toInt()] || DB[2]+DB[3]<LB[DB[1].toInt()] || DB[2]-DB[3]>UB[DB[1].toInt() || DB[2]-DB[3]<LB[DB[1].toInt()]]){
+        Serial.print("VOLTAGE_OVERRANGE");
+        Serial.print(LB[DB[1].toInt()],6);
+        Serial.println(UB[DB[1].toInt()],6);
         break;
       }else{
-        //sineWave(DB)
+        sineWave(DB);
         break;
       }
       
