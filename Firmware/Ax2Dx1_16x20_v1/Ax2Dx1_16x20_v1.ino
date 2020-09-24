@@ -14,6 +14,7 @@
 #include <vector>
 #include <math.h>
 #include <DueFlashStorage.h>
+#include <DueTimer>
 DueFlashStorage dueFlashStorage;
 
 ///////////////////////////////////////////////////////////////
@@ -1163,6 +1164,7 @@ void sineWave(int dacChannel, float offset, float amplitude, float frequency, fl
       {
         sineWave_inputs1[i] = round(sineWave_inputs1[i]*2*abs(amplitude)/(UB[0]-LB[0]) + (offset - OS[0])/GE[0]);
       }
+      Timer0.attachInterrupt(updateSineWave1).setFrequency(frequency/updates)
       break;
     case 2:
       sineWave_inputs2 = readTable(phase, updates);
@@ -1171,6 +1173,7 @@ void sineWave(int dacChannel, float offset, float amplitude, float frequency, fl
       {
         sineWave_inputs2[i] = round(sineWave_inputs2[i]*2*abs(amplitude)/(UB[1]-LB[1]) + (offset - OS[1])/GE[1]);
       }
+      Timer1.attachInterrupt(updateSineWave2).setFrequency(frequency/updates)
       break;
     case 3:
       sineWave_inputs3 = readTable(phase, updates);
@@ -1179,6 +1182,7 @@ void sineWave(int dacChannel, float offset, float amplitude, float frequency, fl
       {
         sineWave_inputs3[i] = round(sineWave_inputs3[i]*2*abs(amplitude)/(UB[2]-LB[2]) + (offset - OS[2])/GE[2]);
       }
+      Timer2.attachInterrupt(updateSineWave3).setFrequency(frequency/updates)
       break;
     case 4:
       sineWave_inputs4 = readTable(phase, updates);
@@ -1187,13 +1191,13 @@ void sineWave(int dacChannel, float offset, float amplitude, float frequency, fl
       {
         sineWave_inputs4[i] = round(sineWave_inputs4[i]*2*abs(amplitude)/(UB[3]-LB[3]) + (offset - OS[3])/GE[3]);
       }
+      Timer3.attachInterrupt(updateSineWave4).setFrequency(frequency/updates)
       break;
       
     default:
       break;
   }
-  //frequency not taken care of
-  //interrupt with updateSineWavex at frequency
+  //stop timer when set_voltage or set_bits is called
 }
 
 std::vector<int> readTable(float phase, int updates)
