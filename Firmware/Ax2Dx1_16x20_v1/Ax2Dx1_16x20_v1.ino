@@ -1162,8 +1162,8 @@ void sineWave(String DB[7])
   float frequency = float(DB[4]);
   float phase = float(DB[5]);
   int updates = DB[6].toInt();
-  byte temp = dueFlashStorage.read(sineWave_status);
-  dueFlashStorage.write(sineWave_status, temp|2^DB[1].toInt());
+  byte current_status = dueFlashStorage.read(sineWave_status);
+  dueFlashStorage.write(sineWave_status, current_status|pow(2,DB[1].toInt));
   switch (dacChannel)
   {
     case 0:
@@ -1268,19 +1268,51 @@ void stopSineWave(int dacChannel)
   {
     case 0:
       Timer0.stop();
+      byte current_status = dueFlashStorage.read(sineWave_status);
+      dueFlashStorage.write(sineWave_status, ~((~current_status)|pow(2,0)));
       break;
     case 1:
       Timer1.stop();
+      byte current_status = dueFlashStorage.read(sineWave_status);
+      dueFlashStorage.write(sineWave_status, ~((~current_status)|pow(2,1)));
       break;
     case 2:
       Timer2.stop();
+      byte current_status = dueFlashStorage.read(sineWave_status);
+      dueFlashStorage.write(sineWave_status, ~((~current_status)|pow(2,2)));
       break;
     case 3:
       Timer3.stop();
+      byte current_status = dueFlashStorage.read(sineWave_status);
+      dueFlashStorage.write(sineWave_status, ~((~current_status)|pow(2,3)));
       break;
 
     default:
       break;
+  }
+}
+
+void syncSineWaves(byte current_status)
+{
+  if (current_status&pow(2,0) == 1)
+  {
+    Timer0.stop();
+    Timer0.start();
+  }
+  if (current_status&pow(2,1) == 1)
+  {
+    Timer1.stop();
+    Timer1.start();
+  }
+  if (current_status&pow(2,2) == 1)
+  {
+    Timer2.stop();
+    Timer2.start();
+  }
+  if (current_status&pow(2,0) == 1)
+  {
+    Timer3.stop();
+    Timer3.start();
   }
 }
 
@@ -1485,14 +1517,7 @@ void router(std::vector<String> DB)
       }
 
     case 25:
-      Timer0.stop();
-      Timer1.stop();
-      Timer2.stop();
-      Timer3.stop();
-      Timer0.start();
-      Timer1.start();
-      Timer2.start();
-      Timer3.start();
+      syncSineWaves(dueFlashStorage.read(sineWave_status));
       Serial.println("SINE WAVES SYNCED");
       break;
       
