@@ -36,10 +36,10 @@ int err = 11;
 ///////////////////////////////////////////////////////////////
 
 //Define commands recognized via serial input
-const int Noperations = 25;
+const int Noperations = 26;
 String operations[Noperations] = {"NOP", "INITIALIZE", "SET", "GET_DAC", "GET_ADC", "RAMP1", "RAMP2", "BUFFER_RAMP", "BUFFER_RAMP_DIS", 
 "RESET", "TALK", "CONVERT_TIME", "*IDN?", "*RDY?", "GET_DUNIT", "SET_DUNIT", "ADC_ZERO_SC_CAL", "ADC_CH_ZERO_SC_CAL", 
-"ADC_CH_FULL_SC_CAL", "DAC_CH_CAL", "FULL_SCALE" , "INQUIRYOSG" , "MESSOSG", "SET_BITS", "SINE_WAVE"};
+"ADC_CH_FULL_SC_CAL", "DAC_CH_CAL", "FULL_SCALE" , "INQUIRYOSG" , "MESSOSG", "SET_BITS", "SINE_WAVE", "SYNC_SINE_WAVES"};
 
 //Store array of bits for AC generation into flash storage
 void store_bitsInputTable()
@@ -1477,6 +1477,18 @@ void router(std::vector<String> DB)
         sineWave(DB);
         break;
       }
+
+    case 25:
+      Timer0.stop();
+      Timer1.stop();
+      Timer2.stop();
+      Timer3.stop();
+      Timer0.start();
+      Timer1.start();
+      Timer2.start();
+      Timer3.start();
+      Serial.println("SYNC_FINISHED");
+      break;
       
     default:
       break;
