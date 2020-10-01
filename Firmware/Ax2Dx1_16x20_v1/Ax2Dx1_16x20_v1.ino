@@ -65,7 +65,7 @@ void store_bitsInputTable()
 
 //initial variables
 int initialized = 0; //address of where initialized variable is stored
-byte sineWave_status = 9882598; //address of where sineWave_status variable is stored
+int sineWave_status = 9882598; //address of where sineWave_status variable is stored
 int delayUnit = 0; // 0=microseconds 1=miliseconds
 int adc_select = 0;
 
@@ -85,9 +85,10 @@ SPISettings adcSettings(12000000, MSBFIRST, SPI_MODE3);
 std::vector<int> sineWave_inputs0;
 std::vector<int> sineWave_inputs1;
 std::vector<int> sineWave_inputs2;
-std::vector<int> sineWave_inputs3;
-int sineWave_updates[4] = [0,0,0,0];
-int sineWave_step[4] = [0,0,0,0];
+std::vector<int> sineWave_inputs3;    //inputs to the DAC
+int sineWave_updates[4] = {0,0,0,0};  //updates per cycle
+int sineWave_step[4] = {0,0,0,0};     //the current step
+DueTimer sineWave_timer[4] = {Timer0,Timer1,Timer2,Timer3}; //timers used 
 
 std::vector<String> query_serial()
 {
@@ -1173,7 +1174,7 @@ void sineWave(String DB[7])
       {
         sineWave_inputs0[i] = round(sineWave_inputs0[i]*2*abs(amplitude)/(UB[0]-LB[0]) + (offset - OS[0])/GE[0]);
       }
-      Timer0.setFrequency(frequency/updates).start();
+      sineWave_timer[0].setFrequency(frequency/updates).start();
       break;
     case 1:
       sineWave_inputs1 = readTable(phase, updates);
@@ -1182,7 +1183,7 @@ void sineWave(String DB[7])
       {
         sineWave_inputs1[i] = round(sineWave_inputs1[i]*2*abs(amplitude)/(UB[1]-LB[1]) + (offset - OS[1])/GE[1]);
       }
-      Timer1.setFrequency(frequency/updates).start();
+      sineWave_timer[1].setFrequency(frequency/updates).start();
       break;
     case 2:
       sineWave_inputs2 = readTable(phase, updates);
@@ -1191,7 +1192,7 @@ void sineWave(String DB[7])
       {
         sineWave_inputs2[i] = round(sineWave_inputs2[i]*2*abs(amplitude)/(UB[2]-LB[2]) + (offset - OS[2])/GE[2]);
       }
-      Timer2.setFrequency(frequency/updates).start();
+      sineWave_timer[2].setFrequency(frequency/updates).start();
       break;
     case 3:
       sineWave_inputs3 = readTable(phase, updates);
@@ -1200,7 +1201,7 @@ void sineWave(String DB[7])
       {
         sineWave_inputs3[i] = round(sineWave_inputs3[i]*2*abs(amplitude)/(UB[3]-LB[3]) + (offset - OS[3])/GE[3]);
       }
-      Timer3.setFrequency(frequency/updates).start();
+      sineWave_timer[3].setFrequency(frequency/updates).start();
       break;
       
     default:
@@ -1264,55 +1265,22 @@ void updateSineWave3()
 
 void stopSineWave(int dacChannel)
 {
-  switch(dacChannel)
-  {
-    case 0:
-      Timer0.stop();
-      byte current_status = dueFlashStorage.read(sineWave_status);
-      dueFlashStorage.write(sineWave_status, ~((~current_status)|pow(2,0)));
-      break;
-    case 1:
-      Timer1.stop();
-      byte current_status = dueFlashStorage.read(sineWave_status);
-      dueFlashStorage.write(sineWave_status, ~((~current_status)|pow(2,1)));
-      break;
-    case 2:
-      Timer2.stop();
-      byte current_status = dueFlashStorage.read(sineWave_status);
-      dueFlashStorage.write(sineWave_status, ~((~current_status)|pow(2,2)));
-      break;
-    case 3:
-      Timer3.stop();
-      byte current_status = dueFlashStorage.read(sineWave_status);
-      dueFlashStorage.write(sineWave_status, ~((~current_status)|pow(2,3)));
-      break;
-
-    default:
-      break;
-  }
+  sineWave_timer[dacChannel].stop();
+  byte current_status = dueFlashStorage.read(sineWave_status);
+  dueFlashStorage.write(sineWave_status, ~((~current_status)|pow(2,dacChannel)));
 }
 
 void syncSineWaves(byte current_status)
 {
-  if (current_status&pow(2,0) == 1)
+  for (int i=0; i<4; i++)
   {
-    Timer0.stop();
-    Timer0.start();
+    if (current_status&pow(2,i) == 1)
+      sineWave_timer[i].stop();
   }
-  if (current_status&pow(2,1) == 1)
+  for (int i=0; i<4; i++)
   {
-    Timer1.stop();
-    Timer1.start();
-  }
-  if (current_status&pow(2,2) == 1)
-  {
-    Timer2.stop();
-    Timer2.start();
-  }
-  if (current_status&pow(2,0) == 1)
-  {
-    Timer3.stop();
-    Timer3.start();
+    if (current_status&pow(2,i) == 1)
+      sineWave_timer[i].start();
   }
 }
 
@@ -1511,8 +1479,19 @@ void router(std::vector<String> DB)
         break;
       }else{
         sineWave(DB);
-        Serial.print("STARTED OUTPUTTING SINE WAVE FROM DAC");
+        Serial.print("START OUTPUTTING SINE WAVE FROM DAC ");
         Serial.println(DB[1]);
+        Serial.print("SINE WAVE OUTPUT STATUS:");
+        for (int i=0; i<4; i++)
+        {
+          if (dueFlashStorage.read(sineWave_status)&pow(2,i) == 1){
+            Serial.print(" DAC ");
+            Serial.print(i);
+            Serial.print(" UPDATING AT ");
+            Serial.print(sineWave_timer[i].getFrequency());
+            Serial.print(" Hz;")
+          }
+        }
         break;
       }
 
