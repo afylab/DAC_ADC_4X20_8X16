@@ -33,10 +33,10 @@ int err = 11;
 ///////////////////////////////////////////////////////////////
 
 //Define commands recognized via serial input
-const int Noperations = 23;
+const int Noperations = 24;
 String operations[Noperations] = {"NOP", "INITIALIZE", "SET", "GET_DAC", "GET_ADC", "RAMP1", "RAMP2", "BUFFER_RAMP", "BUFFER_RAMP_DIS", 
 "RESET", "TALK", "CONVERT_TIME", "*IDN?", "*RDY?", "GET_DUNIT", "SET_DUNIT", "ADC_ZERO_SC_CAL", "ADC_CH_ZERO_SC_CAL", 
-"ADC_CH_FULL_SC_CAL", "DAC_CH_CAL", "FULL_SCALE" , "INQUIRYOSG" , "MESSOSG"};
+"ADC_CH_FULL_SC_CAL", "DAC_CH_CAL", "FULL_SCALE" , "INQUIRYOSG" , "MESSOSG", "CHECKSUM"};
 
 //initial variables
 int initialized = 0; //address of where initialized variable is stored
@@ -53,7 +53,7 @@ float LB[4] = {-10.0 * GE[0] + OS[0], -10.0 * GE[1] + OS[1], -10.0 * GE[2] + OS[
 
 //define SPI settings for DACs and ADCs
 SPISettings dacSettings(35000000, MSBFIRST, SPI_MODE1);
-SPISettings adcSettings(12000000, MSBFIRST, SPI_MODE3);
+SPISettings adcSettings(8000000, MSBFIRST, SPI_MODE3);
 
 std::vector<String> query_serial()
 {
@@ -164,7 +164,11 @@ int indexOfOperation(String operation)
 }
 
 void waitDRDY() {
-  while (digitalRead(drdy[0]) == HIGH && digitalRead(drdy[1]) == HIGH ) {}
+  int count = 0;
+  while (digitalRead(drdy[0]) == HIGH && digitalRead(drdy[1]) == HIGH && count < 2000) {
+    count = count + 1;
+    delay(1);
+  }
 }
 
 void resetADC() //Resets the ADC, and sets the range to default +-10 V
@@ -938,7 +942,56 @@ void setUnit(int unit)
   }
 }
 
+void adc_checksum(std::vector<String> DB) {
+  
+  byte b1;
+  byte b2; 
+  int i = DB[1].toInt();
+  
+  SPI.beginTransaction(adcSettings);
+  digitalWrite(adc_sync[i], LOW);
+  SPI.transfer(0x00);  // Indicates comm register to access mode register
+  digitalWrite(adc_sync[i], HIGH);
+  digitalWrite(adc_sync[i], LOW);
+  SPI.transfer(0xFF);  // Indicates comm register to access mode register
+  digitalWrite(adc_sync[i], HIGH);
+  digitalWrite(adc_sync[i], LOW);
+  SPI.transfer(0xFF);  // Indicates comm register to access mode register
+  digitalWrite(adc_sync[i], HIGH);
+  digitalWrite(adc_sync[i], LOW);
+  SPI.transfer(0xFF);  // Indicates comm register to access mode register
+  digitalWrite(adc_sync[i], HIGH);
+  digitalWrite(adc_sync[i], LOW);
+  SPI.transfer(0xFF);  // Indicates comm register to access mode register
+  digitalWrite(adc_sync[i], HIGH);
+  
+  digitalWrite(adc_sync[i], LOW);
+  SPI.transfer(0x05);  // Indicates comm register to access mode register
+  digitalWrite(adc_sync[i], HIGH);
+  digitalWrite(adc_sync[i], LOW);
+  SPI.transfer(0x00); //Write to checksum register
+  digitalWrite(adc_sync[i], HIGH);
+  digitalWrite(adc_sync[i], LOW);
+  SPI.transfer(0x00); //Write to checksum register
+  digitalWrite(adc_sync[i], HIGH);
+
+  digitalWrite(adc_sync[i], LOW);
+  SPI.transfer(0x45);  // Indicates comm register to access mode register
+  digitalWrite(adc_sync[i], HIGH);
+  digitalWrite(adc_sync[i], LOW);
+  b1 = SPI.transfer(0x00); //Read checksum register
+  digitalWrite(adc_sync[i], HIGH);
+  digitalWrite(adc_sync[i], LOW);
+  b2 = SPI.transfer(0x00); //Read to checksum register
+  digitalWrite(adc_sync[i], HIGH);
+  SPI.endTransaction();
+  
+  Serial.println((b1 << 8) | b2);
+  Serial.flush();
+}
+
 void adc_zero_scale_cal()
+
 {
   for ( int i = 0; i <= 1; i++){
     SPI.beginTransaction(adcSettings);
@@ -1233,6 +1286,10 @@ void router(std::vector<String> DB)
       Serial.println(GE[1]);
       Serial.println(GE[2]);
       Serial.println(GE[3]);
+      break;
+
+    case 23:
+      adc_checksum(DB);
       break;
       
     default:
