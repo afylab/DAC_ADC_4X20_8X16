@@ -167,6 +167,7 @@ void setup()
 
 void updateSineWave0()
 {
+  dacBitsSend(dac[0], sineWave_inputs0[sineWave_step[0]]);
   sineWave_step[0] += 1;
   if (sineWave_step[0] >= sineWave_updates[0])
     sineWave_step[0] = 0;
