@@ -41,31 +41,9 @@ String operations[Noperations] = {"NOP", "INITIALIZE", "SET", "GET_DAC", "GET_AD
 "RESET", "TALK", "CONVERT_TIME", "*IDN?", "*RDY?", "GET_DUNIT", "SET_DUNIT", "ADC_ZERO_SC_CAL", "ADC_CH_ZERO_SC_CAL", 
 "ADC_CH_FULL_SC_CAL", "DAC_CH_CAL", "FULL_SCALE" , "INQUIRYOSG" , "MESSOSG", "SET_BITS", "SINE_WAVE", "SYNC_SINE_WAVES"};
 
-//Store array of bits for AC generation into flash storage
-void store_bitsInputTable()
-{
-  byte b1;
-  byte b2;
-  byte b3;
-  float phase[3294199];    //3294199 = 2pi*2^19
-  int bitsInput[3294199];
-  for (int i=0; i<3294199; i++)
-  {
-    phase[i] = 2*M_PI*i/3294199;
-  }
-  for (int i=0; i<3294199; i++)
-  {
-    //bitsInput[i] = pow(2,19)*sin(phase[i]);
-    intToThreeBytes(pow(2,19)*sin(phase[i]), &b1, &b2, &b3);
-    dueFlashStorage.write(3*i+1, b1);
-    dueFlashStorage.write(3*i+2, b2);
-    dueFlashStorage.write(3*i+3, b3);  //uses address up to 9882597
-  }
-}
-
 //initial variables
 int initialized = 0; //address of where initialized variable is stored
-int sineWave_status = 9882598; //address of where sineWave_status variable is stored
+int sineWave_status = 1; //address of where sineWave_status variable is stored
 int delayUnit = 0; // 0=microseconds 1=miliseconds
 int adc_select = 0;
 
@@ -156,13 +134,44 @@ void setup()
 
   digitalWrite(reset[0], HIGH);  digitalWrite(data, LOW); digitalWrite(reset[0], LOW);  digitalWrite(data, HIGH); delay(5);  digitalWrite(reset[0], HIGH);  digitalWrite(data, LOW); //Resets ADC1 on startup.
   digitalWrite(reset[1], HIGH);  digitalWrite(data, LOW); digitalWrite(reset[1], LOW);  digitalWrite(data, HIGH); delay(5);  digitalWrite(reset[1], HIGH);  digitalWrite(data, LOW); //Resets ADC2 on startup.
-  
+
+  Serial.println("old setup completed");
+  delay(100);
   store_bitsInputTable();
+  Serial.println("table stored");
   dueFlashStorage.write(sineWave_status, 0);
   Timer0.attachInterrupt(updateSineWave0);
   Timer1.attachInterrupt(updateSineWave1);
   Timer2.attachInterrupt(updateSineWave2);
   Timer3.attachInterrupt(updateSineWave3);
+  Serial.println("setup completed");
+}
+
+void store_bitsInputTable()
+{
+  Serial.println("function started");
+  byte b1;
+  byte b2;
+  byte b3;
+  float phase;
+  for (int i=0; i<=32768; i++)    //16 bit resolution
+  {
+    phase = 2*M_PI*i/65536;
+    intToThreeBytes((pow(2,19)-1)*sin(phase), &b1, &b2, &b3);
+    dueFlashStorage.write(3*i+2, b1);
+    dueFlashStorage.write(3*i+3, b2);
+    dueFlashStorage.write(3*i+4, b3);
+    Serial.print('0');
+    delay(20);
+  }
+  for (int i=1; i<32768; i++)
+  {
+    phase = 2*M_PI*i/65536 + M_PI;
+    intToThreeBytes((pow(2,19)-1)*sin(phase)+1048576, &b1, &b2, &b3);
+    dueFlashStorage.write(98304+3*i+2, b1);
+    dueFlashStorage.write(98304+3*i+3, b2);
+    dueFlashStorage.write(98304+3*i+4, b3);
+  }
 }
 
 void updateSineWave0()
@@ -1200,17 +1209,17 @@ void sineWave(std::vector<String> DB)
   int index;
   byte b1, b2, b3;
   for (int i=0; i<updates; i++)
-  {                               //read the i*3294199/updates + phase th value
-    index = i*3294199/updates + phase;
-    while (index > 3294198){
-      index -= 3294198;
+  {                               //read the i*65536/updates + phase th value
+    index = i*65536/updates + phase;
+    while (index > 65535){
+      index -= 65535;
     }
     while (index < 0){
-      index += 3294198;
+      index += 65535;
     }
-    b1 = dueFlashStorage.read(index-2);
-    b2 = dueFlashStorage.read(index-1);
-    b3 = dueFlashStorage.read(index);
+    b1 = dueFlashStorage.read(3*index+2);
+    b2 = dueFlashStorage.read(3*index+3);
+    b3 = dueFlashStorage.read(3*index+4);
     readValues[i] = threeByteToInt(b1,b2,b3);
   }
   switch (dacChannel)
