@@ -60,13 +60,18 @@ SPISettings dacSettings(35000000, MSBFIRST, SPI_MODE1);
 SPISettings adcSettings(12000000, MSBFIRST, SPI_MODE3);
 
 //Global variables for sine wave generation
-std::vector<int> sineWave_inputs0;
+/*std::vector<int> sineWave_inputs0;
 std::vector<int> sineWave_inputs1;
 std::vector<int> sineWave_inputs2;
-std::vector<int> sineWave_inputs3;    //inputs to the DAC
+std::vector<int> sineWave_inputs3;    //inputs to the DAC*/
+float sineWave_rescale[4] = {0,0,0,0};  //rescaling factors for the inputs
+float sineWave_offset[4] = {0,0,0,0};   //offsets of the inputs
+float sineWave_phase[4] = {0,0,0,0};    //phases of the waves
 int sineWave_updates[4] = {0,0,0,0};  //updates per cycle
-int sineWave_step[4] = {0,0,0,0};     //the current step
-DueTimer sineWave_timer[4] = {Timer0,Timer1,Timer2,Timer3}; //timers used 
+int sineWave_step[4] = {0,0,0,0};     //the current steps
+byte bv[3];  //bytes for reading table
+int readIndex;
+DueTimer sineWave_timer[4] = {Timer0,Timer1,Timer2,Timer3}; //timers used
 
 std::vector<String> query_serial()
 {
@@ -140,10 +145,10 @@ void setup()
   store_bitsInputTable();
   Serial.println("table stored");
   dueFlashStorage.write(sineWave_status, 0);
-  Timer0.attachInterrupt(updateSineWave0);
-  Timer1.attachInterrupt(updateSineWave1);
-  Timer2.attachInterrupt(updateSineWave2);
-  Timer3.attachInterrupt(updateSineWave3);
+  sineWave_timer[0].attachInterrupt(updateSineWave0);
+  sineWave_timer[1].attachInterrupt(updateSineWave1);
+  sineWave_timer[2].attachInterrupt(updateSineWave2);
+  sineWave_timer[3].attachInterrupt(updateSineWave3);
   Serial.println("setup completed");
 }
 
@@ -176,31 +181,38 @@ void store_bitsInputTable()
 
 void updateSineWave0()
 {
+  updateSineWave(0);
+  /*index = i*65536/updates + phase;
+    while (index > 65535){
+      index -= 65535;
+    }
+    while (index < 0){
+      index += 65535;
+    }
+    b1 = dueFlashStorage.read(3*index+2);
+    b2 = dueFlashStorage.read(3*index+3);
+    b3 = dueFlashStorage.read(3*index+4);
+    readValues[i] = threeByteToInt(b1,b2,b3);
+  }
+  sineWave_inputs0.push_back(readValues[i]*2*abs(amplitude)/(UB[0]-LB[0]) + (offset - OS[0])/GE[0]);
+  ----------------------------------------------------------------------
   dacBitsSend(dac[0], sineWave_inputs0[sineWave_step[0]]);
   sineWave_step[0] += 1;
   if (sineWave_step[0] >= sineWave_updates[0])
     sineWave_step[0] = 0;
+  */
 }
 void updateSineWave1()
 {
-  dacBitsSend(dac[1], sineWave_inputs1[sineWave_step[1]]);
-  sineWave_step[1] += 1;
-  if (sineWave_step[1] >= sineWave_updates[1])
-    sineWave_step[1] = 0;
+  updateSineWave(1);
 }
 void updateSineWave2()
 {
-  dacBitsSend(dac[2], sineWave_inputs2[sineWave_step[2]]);
-  sineWave_step[2] += 1;
-  if (sineWave_step[2] >= sineWave_updates[2])
-    sineWave_step[2] = 0;
+  updateSineWave(2);
 }
 void updateSineWave3()
 {
-  dacBitsSend(dac[3], sineWave_inputs3[sineWave_step[3]]);
-  sineWave_step[3] += 1;
-  if (sineWave_step[3] >= sineWave_updates[3])
-    sineWave_step[3] = 0;
+  updateSineWave(3);
 }
 
 void blinker(int s) {
@@ -1205,61 +1217,31 @@ void sineWave(std::vector<String> DB)
   byte current_status = dueFlashStorage.read(sineWave_status);    //update status
   dueFlashStorage.write(sineWave_status, current_status|(byte)pow(2,dacChannel));
 
-  int readValues[updates];    //read from table and start timer
-  int index;
-  byte b1, b2, b3;
-  for (int i=0; i<updates; i++)
-  {                               //read the i*65536/updates + phase th value
-    index = i*65536/updates + phase;
-    while (index > 65535){
-      index -= 65535;
-    }
-    while (index < 0){
-      index += 65535;
-    }
-    b1 = dueFlashStorage.read(3*index+2);
-    b2 = dueFlashStorage.read(3*index+3);
-    b3 = dueFlashStorage.read(3*index+4);
-    readValues[i] = threeByteToInt(b1,b2,b3);
-  }
-  switch (dacChannel)
-  {
-    case 0:
-      sineWave_inputs0.clear();
-      for (int i=0; i<updates; i++)
-      {
-        sineWave_inputs0.push_back(readValues[i]*2*abs(amplitude)/(UB[0]-LB[0]) + (offset - OS[0])/GE[0]);
-      }
-      sineWave_timer[0].setFrequency(frequency*updates).start();
-      break;
-    case 1:
-      sineWave_inputs1.clear();
-      for (int i=0; i<updates; i++)
-      {
-        sineWave_inputs1.push_back(readValues[i]*2*abs(amplitude)/(UB[1]-LB[1]) + (offset - OS[1])/GE[1]);
-      }
-      sineWave_timer[1].setFrequency(frequency*updates).start();
-      break;
-    case 2:
-      sineWave_inputs2.clear();
-      for (int i=0; i<updates; i++)
-      {
-        sineWave_inputs2.push_back(readValues[i]*2*abs(amplitude)/(UB[2]-LB[2]) + (offset - OS[2])/GE[2]);
-      }
-      sineWave_timer[2].setFrequency(frequency*updates).start();
-      break;
-    case 3:
-      sineWave_inputs3.clear();
-      for (int i=0; i<updates; i++)
-      {
-        sineWave_inputs3.push_back(readValues[i]*2*abs(amplitude)/(UB[3]-LB[3]) + (offset - OS[3])/GE[3]);
-      }
-      sineWave_timer[3].setFrequency(frequency*updates).start();
-      break;
+  sineWave_rescale[dacChannel] = 2*abs(amplitude)/(UB[dacChannel]-LB[dacChannel]);  //store wave parameters
+  sineWave_offset[dacChannel] = (offset - OS[0])/GE[0];
+  sineWave_phase[dacChannel] = phase;
+  sineWave_updates[dacChannel] = updates;
 
-    default:
-      break;
+  sineWave_timer[dacChannel].setFrequency(frequency*updates).start();
+}
+
+void updateSineWave(int dacChannel)
+{
+  readIndex = sineWave_step[dacChannel]*65536/sineWave_updates[dacChannel] + sineWave_phase[dacChannel];
+  while (readIndex > 65535){
+    readIndex -= 65535;
   }
+  while (readIndex < 0){
+    readIndex += 65535;
+  }
+  bv[0] = dueFlashStorage.read(3*readIndex+2);
+  bv[1] = dueFlashStorage.read(3*readIndex+3);
+  bv[2] = dueFlashStorage.read(3*readIndex+4);
+  sineWave_input = threeByteToInt(bv[0],bv[1],bv[2])*sineWave_rescale[dacChannel] + sineWave_offset[dacChannel];
+  dacBitsSend(dac[dacChannel], sineWave_input);
+  sineWave_step[dacChannel] += 1;
+  if (sineWave_step[dacChannel] >= sineWave_updates[dacChannel])
+    sineWave_step = 0;
 }
 
 void stopSineWave(int dacChannel)
@@ -1271,6 +1253,7 @@ void stopSineWave(int dacChannel)
 
 void syncSineWaves(byte current_status)
 {
+  sineWave_step = {0,0,0,0};
   for (int i=0; i<4; i++)
   {
     if (current_status&pow(2,i) == 1)
