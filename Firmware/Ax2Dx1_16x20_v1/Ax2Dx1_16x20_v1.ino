@@ -140,10 +140,7 @@ void setup()
   digitalWrite(reset[0], HIGH);  digitalWrite(data, LOW); digitalWrite(reset[0], LOW);  digitalWrite(data, HIGH); delay(5);  digitalWrite(reset[0], HIGH);  digitalWrite(data, LOW); //Resets ADC1 on startup.
   digitalWrite(reset[1], HIGH);  digitalWrite(data, LOW); digitalWrite(reset[1], LOW);  digitalWrite(data, HIGH); delay(5);  digitalWrite(reset[1], HIGH);  digitalWrite(data, LOW); //Resets ADC2 on startup.
 
-  Serial.println("old setup completed");
-  delay(100);
-  store_bitsInputTable();
-  Serial.println("table stored");
+  //store_bitsInputTable();
   dueFlashStorage.write(sineWave_status, 0);
   sineWave_timer[0].attachInterrupt(updateSineWave0);
   sineWave_timer[1].attachInterrupt(updateSineWave1);
@@ -159,17 +156,20 @@ void store_bitsInputTable()
   byte b2;
   byte b3;
   float phase;
-  for (int i=0; i<=32768; i++)    //16 bit resolution
+  Serial.println("before first for");
+  for (long i=0; i<=32768; i++)    //16 bit resolution
   {
     phase = 2*M_PI*i/65536;
     intToThreeBytes((pow(2,19)-1)*sin(phase), &b1, &b2, &b3);
     dueFlashStorage.write(3*i+2, b1);
     dueFlashStorage.write(3*i+3, b2);
     dueFlashStorage.write(3*i+4, b3);
-    Serial.print('0');
-    delay(20);
+    if (i%500 == 0){
+      Serial.println(i);
+    }
   }
-  for (int i=1; i<32768; i++)
+  Serial.println("after first for");
+  for (long i=1; i<32768; i++)
   {
     phase = 2*M_PI*i/65536 + M_PI;
     intToThreeBytes((pow(2,19)-1)*sin(phase)+1048576, &b1, &b2, &b3);
@@ -1219,7 +1219,7 @@ void sineWave(std::vector<String> DB)
 
   sineWave_rescale[dacChannel] = 2*abs(amplitude)/(UB[dacChannel]-LB[dacChannel]);  //store wave parameters
   sineWave_offset[dacChannel] = (offset - OS[0])/GE[0];
-  sineWave_phase[dacChannel] = phase;
+  sineWave_phase[dacChannel] = phase*32768/M_PI;
   sineWave_updates[dacChannel] = updates;
 
   sineWave_timer[dacChannel].setFrequency(frequency*updates).start();
@@ -1229,19 +1229,19 @@ void updateSineWave(int dacChannel)
 {
   readIndex = sineWave_step[dacChannel]*65536/sineWave_updates[dacChannel] + sineWave_phase[dacChannel];
   while (readIndex > 65535){
-    readIndex -= 65535;
+    readIndex -= 65536;
   }
   while (readIndex < 0){
-    readIndex += 65535;
+    readIndex += 65536;
   }
   bv[0] = dueFlashStorage.read(3*readIndex+2);
   bv[1] = dueFlashStorage.read(3*readIndex+3);
   bv[2] = dueFlashStorage.read(3*readIndex+4);
-  sineWave_input = threeByteToInt(bv[0],bv[1],bv[2])*sineWave_rescale[dacChannel] + sineWave_offset[dacChannel];
+  int sineWave_input = threeByteToInt(bv[0],bv[1],bv[2])*sineWave_rescale[dacChannel] + sineWave_offset[dacChannel];
   dacBitsSend(dac[dacChannel], sineWave_input);
   sineWave_step[dacChannel] += 1;
   if (sineWave_step[dacChannel] >= sineWave_updates[dacChannel])
-    sineWave_step = 0;
+    sineWave_step[dacChannel] = 0;
 }
 
 void stopSineWave(int dacChannel)
@@ -1253,7 +1253,7 @@ void stopSineWave(int dacChannel)
 
 void syncSineWaves(byte current_status)
 {
-  sineWave_step = {0,0,0,0};
+  sineWave_step[0]=0; sineWave_step[1]=0; sineWave_step[2]=0; sineWave_step[3]=0;
   for (int i=0; i<4; i++)
   {
     if (current_status&pow(2,i) == 1)
