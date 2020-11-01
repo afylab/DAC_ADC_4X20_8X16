@@ -140,23 +140,24 @@ void setup()
   digitalWrite(reset[0], HIGH);  digitalWrite(data, LOW); digitalWrite(reset[0], LOW);  digitalWrite(data, HIGH); delay(5);  digitalWrite(reset[0], HIGH);  digitalWrite(data, LOW); //Resets ADC1 on startup.
   digitalWrite(reset[1], HIGH);  digitalWrite(data, LOW); digitalWrite(reset[1], LOW);  digitalWrite(data, HIGH); delay(5);  digitalWrite(reset[1], HIGH);  digitalWrite(data, LOW); //Resets ADC2 on startup.
 
-  //store_bitsInputTable();
+  store_bitsInputTable();
+  //Serial.print("The 16384th input is");
+  /*Serial.println(threeByteToInt(dueFlashStorage.read(1*3+2),dueFlashStorage.read(1*3+3),
+                              dueFlashStorage.read(1*3+4)));*/
   dueFlashStorage.write(sineWave_status, 0);
-  sineWave_timer[0].attachInterrupt(updateSineWave0);
+  //sineWave_timer[0].attachInterrupt(updateSineWave0);
   sineWave_timer[1].attachInterrupt(updateSineWave1);
   sineWave_timer[2].attachInterrupt(updateSineWave2);
   sineWave_timer[3].attachInterrupt(updateSineWave3);
-  Serial.println("setup completed");
+  //Serial.println("setup completed");
 }
 
 void store_bitsInputTable()
 {
-  Serial.println("function started");
   byte b1;
   byte b2;
   byte b3;
   float phase;
-  Serial.println("before first for");
   for (long i=0; i<=32768; i++)    //16 bit resolution
   {
     phase = 2*M_PI*i/65536;
@@ -165,10 +166,10 @@ void store_bitsInputTable()
     dueFlashStorage.write(3*i+3, b2);
     dueFlashStorage.write(3*i+4, b3);
     if (i%500 == 0){
-      Serial.println(i);
+      Serial.print(i);
+      Serial.println("positive values stored");
     }
   }
-  Serial.println("after first for");
   for (long i=1; i<32768; i++)
   {
     phase = 2*M_PI*i/65536 + M_PI;
@@ -176,6 +177,10 @@ void store_bitsInputTable()
     dueFlashStorage.write(98304+3*i+2, b1);
     dueFlashStorage.write(98304+3*i+3, b2);
     dueFlashStorage.write(98304+3*i+4, b3);
+    if (i%500 == 0){
+      Serial.print(i);
+      Serial.println(" negative values stored");
+    }
   }
 }
 
@@ -1216,12 +1221,14 @@ void sineWave(std::vector<String> DB)
 
   byte current_status = dueFlashStorage.read(sineWave_status);    //update status
   dueFlashStorage.write(sineWave_status, current_status|(byte)pow(2,dacChannel));
+  Serial.println("status updated");
 
   sineWave_rescale[dacChannel] = 2*abs(amplitude)/(UB[dacChannel]-LB[dacChannel]);  //store wave parameters
   sineWave_offset[dacChannel] = (offset - OS[0])/GE[0];
   sineWave_phase[dacChannel] = phase*32768/M_PI;
   sineWave_updates[dacChannel] = updates;
 
+  sineWave_timer[0].attachInterrupt(updateSineWave0);
   sineWave_timer[dacChannel].setFrequency(frequency*updates).start();
 }
 
@@ -1237,8 +1244,20 @@ void updateSineWave(int dacChannel)
   bv[0] = dueFlashStorage.read(3*readIndex+2);
   bv[1] = dueFlashStorage.read(3*readIndex+3);
   bv[2] = dueFlashStorage.read(3*readIndex+4);
-  int sineWave_input = threeByteToInt(bv[0],bv[1],bv[2])*sineWave_rescale[dacChannel] + sineWave_offset[dacChannel];
+  int sineWave_input = threeByteToInt(bv[0],bv[1],bv[2]);
+  if (sineWave_input < 524288){
+    sineWave_input = sineWave_input*sineWave_rescale[dacChannel] + sineWave_offset[dacChannel];
+  }else{
+    sineWave_input = 524288 + (sineWave_input-524288)*sineWave_rescale[dacChannel] + sineWave_offset[dacChannel];
+  }
+  
   dacBitsSend(dac[dacChannel], sineWave_input);
+  Serial.print(sineWave_input);
+  Serial.print(',');
+  Serial.print(sineWave_step[dacChannel]);
+  Serial.print(',');
+  Serial.print(readIndex);Serial.print(',');
+  Serial.print(bv[0]);Serial.print(',');Serial.print(bv[1]);Serial.print(',');Serial.println(bv[2]);
   sineWave_step[dacChannel] += 1;
   if (sineWave_step[dacChannel] >= sineWave_updates[dacChannel])
     sineWave_step[dacChannel] = 0;
@@ -1478,6 +1497,7 @@ void router(std::vector<String> DB)
             Serial.print(" Hz;");
           }
         }
+        Serial.print('\n');
         break;
       }
 
