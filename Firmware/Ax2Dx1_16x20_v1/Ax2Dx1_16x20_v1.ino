@@ -121,7 +121,13 @@ void setup()
 
   digitalWrite(reset[0], HIGH);  digitalWrite(data, LOW); digitalWrite(reset[0], LOW);  digitalWrite(data, HIGH); delay(5);  digitalWrite(reset[0], HIGH);  digitalWrite(data, LOW); //Resets ADC1 on startup.
   digitalWrite(reset[1], HIGH);  digitalWrite(data, LOW); digitalWrite(reset[1], LOW);  digitalWrite(data, HIGH); delay(5);  digitalWrite(reset[1], HIGH);  digitalWrite(data, LOW); //Resets ADC2 on startup.
-  
+
+
+  if (dueFlashStorage.read(initialized) != 1)
+  {
+    normalMode();
+    dueFlashStorage.write(initialized, 1);
+  }
 }
 
 void blinker(int s) {
@@ -1301,12 +1307,6 @@ void loop()
 {
   Serial.flush();
   std::vector<String> comm;
-
-  if (dueFlashStorage.read(initialized) == 1)
-  {
-    normalMode();
-    dueFlashStorage.write(initialized, 1);
-  }
 
   if (Serial.available())
   {
