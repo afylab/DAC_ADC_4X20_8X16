@@ -53,6 +53,8 @@ float GE[4] = {1,1,1,1}; // gain error
 float UB[4]; // Upper bound
 float LB[4]; // Lower bound
 
+float DAC_Voltage[4] = {0,0,0,0};
+
 //define SPI settings for DACs and ADCs
 SPISettings dacSettings(35000000, MSBFIRST, SPI_MODE1);
 SPISettings adcSettings(8000000, MSBFIRST, SPI_MODE3);
@@ -920,7 +922,7 @@ void autoRamp2(std::vector<String> DB)
 
 }
 
-void readDAC(int DACChannel)
+void readDAC(int DACChannel) // Does not work; always reads 0 from register
 {
   int o1;
   int o2;
@@ -1212,7 +1214,6 @@ void router(std::vector<String> DB)
       break;
 
     case 1:
-      //    debug();
       digitalWrite(data, HIGH);
       normalMode();
       Serial.println("INITIALIZATION COMPLETE");
@@ -1236,11 +1237,12 @@ void router(std::vector<String> DB)
       else
       {
         v = writeDAC(DB[1].toInt(), DB[2].toFloat());
+        DAC_Voltage[DB[1].toInt()] = v;
         Serial.print("DAC ");
         Serial.print(DB[1]);
         Serial.print(" UPDATED TO ");
         Serial.print(v, 6);
-        Serial.println("V"); 
+        Serial.println(" V"); 
         break;
       }
  
@@ -1258,18 +1260,25 @@ void router(std::vector<String> DB)
       {
         v = dacCodeDataSend(channel,code);
         Serial.print("DAC ");
-        Serial.print(DB[1]);
+        Serial.print(channel);
         Serial.print(" CODE UPDATED TO ");
         Serial.print(code);
         Serial.println(".");
+        DAC_Voltage[channel] = v;
       }
       break;
 
     case 4:
-      digitalWrite(data, HIGH);
-      channel = dac[DB[1].toInt()];
-      readDAC(channel);
-      digitalWrite(data, LOW);
+      channel = DB[1].toInt();
+      if (!isDACChannel(channel)) {
+        Serial.println("INVALID DAC CHANNEL.");
+      }
+      else {
+        digitalWrite(data, HIGH);
+        Serial.print(DAC_Voltage[channel], 6);
+        Serial.println(" V");
+        digitalWrite(data, LOW);
+      }
       break;
 
     case 5: // Read ADC
@@ -1385,7 +1394,7 @@ void router(std::vector<String> DB)
       break;
 
     case 25:
-      Serial.println("DA20_16_06");
+      Serial.println("DA20_16_08");
       break;
     
     default:
