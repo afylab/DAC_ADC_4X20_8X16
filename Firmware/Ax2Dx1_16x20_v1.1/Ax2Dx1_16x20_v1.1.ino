@@ -1275,8 +1275,7 @@ void router(std::vector<String> DB)
       }
       else {
         digitalWrite(data, HIGH);
-        Serial.print(DAC_Voltage[channel], 6);
-        Serial.println(" V");
+        Serial.println(DAC_Voltage[channel], 6);
         digitalWrite(data, LOW);
       }
       break;
