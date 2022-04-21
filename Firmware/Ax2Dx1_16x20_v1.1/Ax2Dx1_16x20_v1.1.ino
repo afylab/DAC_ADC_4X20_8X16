@@ -944,7 +944,8 @@ void readDAC(int DACChannel) // Does not work; always reads 0 from register
   SPI.endTransaction();
   
   voltage = threeByteToVoltage(o1, o2, o3);
-  Serial.println(voltage, 6);
+  voltage = (voltage + OS[0]) * GE[0];
+  Serial.println(voltage, 5);
 }
 
 void normalMode()
