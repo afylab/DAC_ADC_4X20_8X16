@@ -1275,9 +1275,9 @@ void router(std::vector<String> DB)
         Serial.println("INVALID DAC CHANNEL.");
       }
       else {
-        digitalWrite(data, HIGH);
-        Serial.println(DAC_Voltage[channel], 6);
-        digitalWrite(data, LOW);
+        //digitalWrite(data, HIGH);
+        readDAC(channel);
+        //digitalWrite(data, LOW);
       }
       break;
 
